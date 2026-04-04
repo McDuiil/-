@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Language, Theme, AppData, Profile } from '../types';
 import { translations } from '../lib/i18n';
+import { githubService } from '../services/githubService';
 
 interface AppContextType {
   language: Language;
@@ -12,6 +13,7 @@ interface AppContextType {
   setAppData: (data: AppData) => void;
   calculateBMR: (profile: Profile) => number;
   mergeData: (incomingData: AppData) => void;
+  syncWithGist: () => Promise<void>;
 }
 
 const defaultProfile: Profile = {
@@ -156,8 +158,119 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const syncWithGist = async () => {
+    const { githubToken, gistId, mode } = appData.syncSettings;
+    if (!githubToken) {
+      alert(t('enterToken'));
+      return;
+    }
+
+    try {
+      let currentGistId = gistId;
+      let remoteData: AppData | null = null;
+
+      if (!currentGistId) {
+        // Create new Gist if not exists
+        const newGistId = await githubService.createGist(githubToken, appData);
+        if (newGistId) {
+          currentGistId = newGistId;
+          setAppData(prev => ({
+            ...prev,
+            syncSettings: { ...prev.syncSettings, gistId: newGistId }
+          }));
+          alert(t('gistCreateSuccess'));
+        } else {
+          throw new Error('Gist creation failed');
+        }
+      } else {
+        // Fetch existing Gist
+        remoteData = await githubService.fetchGist(githubToken, currentGistId);
+      }
+
+      if (remoteData) {
+        // Merge Logic
+        if (mode === 'pc') {
+          // PC Master: Pull remote (mobile inputs) -> Merge -> Push back
+          const mergedDays = { ...appData.days };
+          Object.entries(remoteData.days).forEach(([date, dayData]) => {
+            const remoteDay = dayData as any;
+            if (!mergedDays[date]) {
+              mergedDays[date] = remoteDay;
+            } else {
+              const existingMealIds = new Set(mergedDays[date].meals.map(m => m.id));
+              const newMeals = remoteDay.meals.filter((m: any) => !existingMealIds.has(m.id));
+              const existingWorkoutIds = new Set(mergedDays[date].workoutSessions.map(w => w.id));
+              const newWorkouts = remoteDay.workoutSessions.filter((w: any) => !existingWorkoutIds.has(w.id));
+
+              mergedDays[date] = {
+                ...mergedDays[date],
+                meals: [...mergedDays[date].meals, ...newMeals],
+                workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
+                water: Math.max(mergedDays[date].water, remoteDay.water || 0),
+                steps: Math.max(mergedDays[date].steps, remoteDay.steps || 0)
+              };
+            }
+          });
+
+          const updatedData = {
+            ...appData,
+            days: mergedDays,
+            syncSettings: { ...appData.syncSettings, lastSync: new Date().toISOString() }
+          };
+
+          const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
+          if (success) {
+            setAppData(updatedData);
+            alert(t('gistSyncSuccess'));
+          } else {
+            throw new Error('Gist update failed');
+          }
+        } else {
+          // Mobile Input: Pull remote (PC master) -> Append local new items -> Push back
+          const mergedDays = { ...remoteData.days };
+          Object.entries(appData.days).forEach(([date, dayData]) => {
+            const localDay = dayData as any;
+            if (!mergedDays[date]) {
+              mergedDays[date] = localDay;
+            } else {
+              const existingMealIds = new Set(mergedDays[date].meals.map(m => m.id));
+              const newMeals = localDay.meals.filter((m: any) => !existingMealIds.has(m.id));
+              const existingWorkoutIds = new Set(mergedDays[date].workoutSessions.map(w => w.id));
+              const newWorkouts = localDay.workoutSessions.filter((w: any) => !existingWorkoutIds.has(w.id));
+
+              mergedDays[date] = {
+                ...mergedDays[date],
+                meals: [...mergedDays[date].meals, ...newMeals],
+                workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
+                water: Math.max(mergedDays[date].water, localDay.water || 0),
+                steps: Math.max(mergedDays[date].steps, localDay.steps || 0)
+              };
+            }
+          });
+
+          const updatedData = {
+            ...remoteData,
+            days: mergedDays,
+            syncSettings: { ...appData.syncSettings, lastSync: new Date().toISOString() }
+          };
+
+          const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
+          if (success) {
+            setAppData(updatedData);
+            alert(t('gistSyncSuccess'));
+          } else {
+            throw new Error('Gist update failed');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Gist Sync Error:', error);
+      alert(t('gistSyncError'));
+    }
+  };
+
   return (
-    <AppContext.Provider value={{ language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData }}>
+    <AppContext.Provider value={{ language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist }}>
       {children}
     </AppContext.Provider>
   );

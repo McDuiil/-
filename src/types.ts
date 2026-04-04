@@ -88,6 +88,8 @@ export interface DayData {
 export interface SyncSettings {
   mode: 'pc' | 'mobile';
   lastSync?: string;
+  githubToken?: string;
+  gistId?: string;
 }
 
 export interface AppData {

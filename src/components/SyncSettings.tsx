@@ -1,11 +1,12 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Download, Upload, Smartphone, Monitor, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Download, Upload, Smartphone, Monitor, CheckCircle2, AlertCircle, Github, Cloud, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const SyncSettings: React.FC = () => {
-  const { t, appData, setAppData, mergeData } = useApp();
+  const { t, appData, setAppData, mergeData, syncWithGist } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleExport = () => {
     const dataStr = JSON.stringify(appData, null, 2);
@@ -37,8 +38,15 @@ export const SyncSettings: React.FC = () => {
     reader.readAsText(file);
   };
 
+  const handleGistSync = async () => {
+    setIsSyncing(true);
+    await syncWithGist();
+    setIsSyncing(false);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Device Mode Selection */}
       <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-blue-500/20 rounded-lg">
@@ -79,6 +87,64 @@ export const SyncSettings: React.FC = () => {
         </div>
       </div>
 
+      {/* GitHub Gist Sync */}
+      <div className="bg-white/5 rounded-2xl p-6 border border-white/10 space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2 bg-purple-500/20 rounded-lg">
+            <Github className="w-5 h-5 text-purple-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">{t('gistSync')}</h3>
+            <p className="text-sm text-gray-400">{t('gistSyncDescription')}</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">{t('githubToken')}</label>
+            <input
+              type="password"
+              placeholder={t('enterToken')}
+              className="w-full rounded-xl bg-white/5 px-3 py-2 text-sm outline-none border border-white/10 focus:border-purple-500/50 transition-all"
+              value={appData.syncSettings.githubToken || ''}
+              onChange={(e) => setAppData({
+                ...appData,
+                syncSettings: { ...appData.syncSettings, githubToken: e.target.value }
+              })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">{t('gistId')}</label>
+            <input
+              type="text"
+              placeholder={t('enterGistId')}
+              className="w-full rounded-xl bg-white/5 px-3 py-2 text-sm outline-none border border-white/10 focus:border-purple-500/50 transition-all"
+              value={appData.syncSettings.gistId || ''}
+              onChange={(e) => setAppData({
+                ...appData,
+                syncSettings: { ...appData.syncSettings, gistId: e.target.value }
+              })}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleGistSync}
+          disabled={isSyncing}
+          className={`w-full flex items-center justify-center gap-2 p-4 rounded-xl text-white transition-all shadow-lg ${
+            isSyncing ? 'bg-gray-600 cursor-not-allowed' : 'bg-purple-500 hover:bg-purple-600 shadow-purple-500/20'
+          }`}
+        >
+          {isSyncing ? (
+            <RefreshCw className="w-5 h-5 animate-spin" />
+          ) : (
+            <Cloud className="w-5 h-5" />
+          )}
+          <span className="text-sm font-bold">{t('gistSync')}</span>
+        </button>
+      </div>
+
+      {/* Local Export/Import */}
       <div className="grid grid-cols-2 gap-4">
         <button
           onClick={handleExport}
