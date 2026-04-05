@@ -68,6 +68,8 @@ export default function Nutrition() {
     };
   };
 
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
   const targets = getTargets();
   const totals = (dayData.meals || []).reduce((acc, meal) => ({
     calories: acc.calories + (meal.calories || 0),
@@ -90,7 +92,6 @@ export default function Nutrition() {
   };
 
   const handleClearAll = () => {
-    if (!window.confirm(t("clearAll") + "?")) return;
     setAppData({
       ...appData,
       days: {
@@ -101,6 +102,7 @@ export default function Nutrition() {
         }
       }
     });
+    setShowClearConfirm(false);
   };
 
   const handleAddMeal = () => {
@@ -420,7 +422,7 @@ export default function Nutrition() {
             {dayData.meals && dayData.meals.length > 0 && (
               <>
                 <button 
-                  onClick={handleClearAll}
+                  onClick={() => setShowClearConfirm(true)}
                   className="flex items-center gap-2 rounded-full bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 hover:bg-red-500/20 transition-all"
                 >
                   <X size={14} />
@@ -550,6 +552,33 @@ export default function Nutrition() {
             >
               {t("save")}
             </button>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <GlassCard className="w-full max-w-sm space-y-6 border-white/20 bg-black/80 p-6">
+            <div className="space-y-2 text-center">
+              <h2 className="text-xl font-bold text-red-400">{t("clearAll")}?</h2>
+              <p className="text-sm text-white/40">This will remove all meals logged for today. This action cannot be undone.</p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 rounded-2xl bg-white/10 py-4 font-bold text-white transition-transform active:scale-95"
+              >
+                {t("cancel")}
+              </button>
+              <button 
+                onClick={handleClearAll}
+                className="flex-1 rounded-2xl bg-red-500 py-4 font-bold text-white transition-transform active:scale-95 shadow-lg shadow-red-500/20"
+              >
+                {t("delete")}
+              </button>
+            </div>
           </GlassCard>
         </div>
       )}
