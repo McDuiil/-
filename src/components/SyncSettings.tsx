@@ -7,6 +7,7 @@ export const SyncSettings: React.FC = () => {
   const { t, appData, setAppData, mergeData, syncWithGist } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const handleExport = () => {
     const dataStr = JSON.stringify(appData, null, 2);
@@ -39,9 +40,22 @@ export const SyncSettings: React.FC = () => {
   };
 
   const handleGistSync = async () => {
+    if (!appData.syncSettings.githubToken) {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+      return;
+    }
     setIsSyncing(true);
-    await syncWithGist();
-    setIsSyncing(false);
+    setSyncStatus('idle');
+    try {
+      await syncWithGist(true);
+      setSyncStatus('success');
+    } catch (error) {
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    }
   };
 
   return (
@@ -132,15 +146,27 @@ export const SyncSettings: React.FC = () => {
           onClick={handleGistSync}
           disabled={isSyncing}
           className={`w-full flex items-center justify-center gap-2 p-4 rounded-xl text-white transition-all shadow-lg ${
-            isSyncing ? 'bg-gray-600 cursor-not-allowed' : 'bg-purple-500 hover:bg-purple-600 shadow-purple-500/20'
+            isSyncing ? 'bg-gray-600 cursor-not-allowed' : 
+            syncStatus === 'success' ? 'bg-green-500 shadow-green-500/20' :
+            syncStatus === 'error' ? 'bg-red-500 shadow-red-500/20' :
+            'bg-purple-500 hover:bg-purple-600 shadow-purple-500/20'
           }`}
         >
           {isSyncing ? (
             <RefreshCw className="w-5 h-5 animate-spin" />
+          ) : syncStatus === 'success' ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : syncStatus === 'error' ? (
+            <AlertCircle className="w-5 h-5" />
           ) : (
             <Cloud className="w-5 h-5" />
           )}
-          <span className="text-sm font-bold">{isSyncing ? t('syncing') : t('gistSyncNow')}</span>
+          <span className="text-sm font-bold">
+            {isSyncing ? t('syncing') : 
+             syncStatus === 'success' ? t('gistSyncSuccess') :
+             syncStatus === 'error' ? t('gistSyncError') :
+             t('gistSyncNow')}
+          </span>
         </button>
         <p className="text-[10px] text-center text-gray-500 italic">
           {t('autoSyncTip')}
