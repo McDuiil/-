@@ -89,6 +89,18 @@ export default function Dashboard() {
     return diff;
   };
 
+  const getWeightHistory = () => {
+    return Object.entries(appData.days)
+      .filter(([_, data]) => data.weight !== undefined)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-7)
+      .map(([date, data]) => ({
+        date: date.split('-').slice(1).join('/'),
+        weight: data.weight
+      }));
+  };
+
+  const weightHistoryData = getWeightHistory();
   const weightTrend = getWeightTrend();
   const calorieGoal = appData.profile.customCalorieGoal || 2400;
 
@@ -169,7 +181,7 @@ export default function Dashboard() {
           <GlassCard className="flex flex-col gap-2 border-purple-500/20 bg-purple-500/5" delay={0.05}>
             <div className="flex items-center gap-2 text-purple-400">
               <Activity size={18} />
-              <span className="text-[10px] font-bold uppercase tracking-widest">{t("weightTrend")}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t("weightChanged")}</span>
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold">
@@ -226,28 +238,28 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Activity Chart */}
+      {/* Weight History Chart */}
       {isEnabled('activity') && (
         <div className="px-4">
           <GlassCard className="h-[300px]" delay={0.3}>
             <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-green-400">
+              <div className="flex items-center gap-2 text-purple-400">
                 <Activity size={18} />
-                <span className="text-[10px] font-bold uppercase tracking-widest">{t("activity")}</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest">{t("weightTrend")}</span>
               </div>
             </div>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                <AreaChart data={weightHistoryData.length > 0 ? weightHistoryData : [{date: 'N/A', weight: appData.profile.weight}]}>
                   <defs>
-                    <linearGradient id="colorCal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                   <XAxis 
-                    dataKey="time" 
+                    dataKey="date" 
                     axisLine={false} 
                     tickLine={false} 
                     tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
@@ -255,14 +267,16 @@ export default function Dashboard() {
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                     itemStyle={{ color: '#fff' }}
+                    formatter={(value: number) => [`${value} kg`, t('weight')]}
                   />
                   <Area 
                     type="monotone" 
-                    dataKey="calories" 
-                    stroke="#22c55e" 
+                    dataKey="weight" 
+                    stroke="#a855f7" 
                     fillOpacity={1} 
-                    fill="url(#colorCal)" 
+                    fill="url(#colorWeight)" 
                     strokeWidth={2}
+                    animationDuration={1500}
                   />
                 </AreaChart>
               </ResponsiveContainer>
