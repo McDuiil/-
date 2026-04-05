@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Download, Upload, Smartphone, Monitor, CheckCircle2, AlertCircle, Github, Cloud, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
+import { githubService } from '../services/githubService';
 
 export const SyncSettings: React.FC = () => {
   const { t, appData, setAppData, mergeData, syncWithGist } = useApp();
@@ -40,18 +41,45 @@ export const SyncSettings: React.FC = () => {
   };
 
   const handleGistSync = async () => {
-    if (!appData.syncSettings.githubToken) {
+    if (!appData.syncSettings.githubToken || !appData.syncSettings.gistId) {
       setSyncStatus('error');
+      alert(t('enterTokenAndGistId'));
       setTimeout(() => setSyncStatus('idle'), 3000);
       return;
     }
     setIsSyncing(true);
     setSyncStatus('idle');
     try {
-      await syncWithGist(true);
+      await syncWithGist(false);
       setSyncStatus('success');
     } catch (error) {
       setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    }
+  };
+
+  const handleForcePull = async () => {
+    if (!appData.syncSettings.githubToken || !appData.syncSettings.gistId) {
+      alert(t('enterTokenAndGistId'));
+      return;
+    }
+    
+    if (!window.confirm(t('confirmForcePull'))) return;
+
+    setIsSyncing(true);
+    try {
+      const remoteData = await githubService.fetchGist(appData.syncSettings.githubToken, appData.syncSettings.gistId);
+      if (remoteData) {
+        mergeData(remoteData);
+        setSyncStatus('success');
+      } else {
+        throw new Error('Failed to fetch data');
+      }
+    } catch (error) {
+      setSyncStatus('error');
+      alert(t('gistSyncError'));
     } finally {
       setIsSyncing(false);
       setTimeout(() => setSyncStatus('idle'), 3000);
@@ -142,32 +170,44 @@ export const SyncSettings: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleGistSync}
-          disabled={isSyncing}
-          className={`w-full flex items-center justify-center gap-2 p-4 rounded-xl text-white transition-all shadow-lg ${
-            isSyncing ? 'bg-gray-600 cursor-not-allowed' : 
-            syncStatus === 'success' ? 'bg-green-500 shadow-green-500/20' :
-            syncStatus === 'error' ? 'bg-red-500 shadow-red-500/20' :
-            'bg-purple-500 hover:bg-purple-600 shadow-purple-500/20'
-          }`}
-        >
-          {isSyncing ? (
-            <RefreshCw className="w-5 h-5 animate-spin" />
-          ) : syncStatus === 'success' ? (
-            <CheckCircle2 className="w-5 h-5" />
-          ) : syncStatus === 'error' ? (
-            <AlertCircle className="w-5 h-5" />
-          ) : (
-            <Cloud className="w-5 h-5" />
-          )}
-          <span className="text-sm font-bold">
-            {isSyncing ? t('syncing') : 
-             syncStatus === 'success' ? t('gistSyncSuccess') :
-             syncStatus === 'error' ? t('gistSyncError') :
-             t('gistSyncNow')}
-          </span>
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleGistSync}
+            disabled={isSyncing}
+            className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-xl text-white transition-all shadow-lg ${
+              isSyncing ? 'bg-gray-600 cursor-not-allowed' : 
+              syncStatus === 'success' ? 'bg-green-500 shadow-green-500/20' :
+              syncStatus === 'error' ? 'bg-red-500 shadow-red-500/20' :
+              'bg-purple-500 hover:bg-purple-600 shadow-purple-500/20'
+            }`}
+          >
+            {isSyncing ? (
+              <RefreshCw className="w-5 h-5 animate-spin" />
+            ) : syncStatus === 'success' ? (
+              <CheckCircle2 className="w-5 h-5" />
+            ) : syncStatus === 'error' ? (
+              <AlertCircle className="w-5 h-5" />
+            ) : (
+              <Cloud className="w-5 h-5" />
+            )}
+            <span className="text-sm font-bold">
+              {isSyncing ? t('syncing') : 
+               syncStatus === 'success' ? t('gistSyncSuccess') :
+               syncStatus === 'error' ? t('gistSyncError') :
+               t('gistSyncNow')}
+            </span>
+          </button>
+
+          <button
+            onClick={handleForcePull}
+            disabled={isSyncing}
+            className="flex items-center justify-center gap-2 p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white transition-all"
+            title={t('forcePullTip')}
+          >
+            <Download className="w-5 h-5" />
+            <span className="text-sm font-bold">{t('forcePull')}</span>
+          </button>
+        </div>
         <p className="text-[10px] text-center text-gray-500 italic">
           {t('autoSyncTip')}
         </p>

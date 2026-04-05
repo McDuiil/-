@@ -259,72 +259,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    console.log(`Starting Gist Sync. Mode: ${mode}, Silent: ${silent}`);
+
     try {
       let currentGistId = gistId;
       let remoteData: AppData | null = null;
 
       if (!currentGistId) {
-        if (silent) return; // Don't auto-create Gist
-        // Create new Gist if not exists
+        if (silent) return;
+        // Create new Gist if not exists (only makes sense in PC mode or if starting fresh)
         const newGistId = await githubService.createGist(githubToken, appData);
         if (newGistId) {
           currentGistId = newGistId;
-          setAppData(prev => ({
-            ...prev,
-            syncSettings: { ...prev.syncSettings, gistId: newGistId }
-          }));
+          setAppData({
+            ...appData,
+            syncSettings: { ...appData.syncSettings, gistId: newGistId }
+          });
           alert(t('gistCreateSuccess'));
         } else {
-          throw new Error('Gist creation failed');
+          throw new Error('Gist creation failed. Check your token permissions (gist scope required).');
         }
       } else {
         // Fetch existing Gist
         remoteData = await githubService.fetchGist(githubToken, currentGistId);
+        if (!remoteData && !silent) {
+          throw new Error('Failed to fetch data from Gist. Please check your Gist ID and Token.');
+        }
       }
 
       if (remoteData) {
         const migratedRemote = migrateData(remoteData);
-        // Merge Logic
+        let updatedData: AppData;
+
         if (mode === 'pc') {
           // PC Master: Pull remote (mobile inputs) -> Merge -> Push back
+          // We keep our local profile/settings and only merge 'days' from remote
           const mergedDays = { ...appData.days };
           Object.entries(migratedRemote.days).forEach(([date, dayData]) => {
             const remoteDay = dayData as any;
             if (!mergedDays[date]) {
               mergedDays[date] = remoteDay;
             } else {
+              // Merge meals by ID
               const existingMealIds = new Set(mergedDays[date].meals.map(m => m.id));
-              const newMeals = remoteDay.meals.filter((m: any) => !existingMealIds.has(m.id));
+              const newMeals = (remoteDay.meals || []).filter((m: any) => !existingMealIds.has(m.id));
+              
+              // Merge workouts by ID
               const existingWorkoutIds = new Set(mergedDays[date].workoutSessions.map(w => w.id));
-              const newWorkouts = remoteDay.workoutSessions.filter((w: any) => !existingWorkoutIds.has(w.id));
+              const newWorkouts = (remoteDay.workoutSessions || []).filter((w: any) => !existingWorkoutIds.has(w.id));
 
               mergedDays[date] = {
                 ...mergedDays[date],
                 meals: [...mergedDays[date].meals, ...newMeals],
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
-                water: Math.max(mergedDays[date].water, remoteDay.water || 0),
-                steps: Math.max(mergedDays[date].steps, remoteDay.steps || 0),
+                water: Math.max(mergedDays[date].water || 0, remoteDay.water || 0),
+                steps: Math.max(mergedDays[date].steps || 0, remoteDay.steps || 0),
                 weight: remoteDay.weight || mergedDays[date].weight,
                 bodyFat: remoteDay.bodyFat || mergedDays[date].bodyFat
               };
             }
           });
 
-          const updatedData = {
+          updatedData = {
             ...appData,
             days: mergedDays,
             syncSettings: { ...appData.syncSettings, lastSync: new Date().toISOString() }
           };
-
-          const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
-          if (success) {
-            setAppData(updatedData);
-            if (!silent) alert(t('gistSyncSuccess'));
-          } else {
-            throw new Error('Gist update failed');
-          }
         } else {
           // Mobile Input: Pull remote (PC master) -> Append local new items -> Push back
+          // We take the remote profile/settings as master
           const mergedDays = { ...migratedRemote.days };
           Object.entries(appData.days).forEach(([date, dayData]) => {
             const localDay = dayData as any;
@@ -332,64 +335,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
               mergedDays[date] = localDay;
             } else {
               const existingMealIds = new Set(mergedDays[date].meals.map(m => m.id));
-              const newMeals = localDay.meals.filter((m: any) => !existingMealIds.has(m.id));
+              const newMeals = (localDay.meals || []).filter((m: any) => !existingMealIds.has(m.id));
               const existingWorkoutIds = new Set(mergedDays[date].workoutSessions.map(w => w.id));
-              const newWorkouts = localDay.workoutSessions.filter((w: any) => !existingWorkoutIds.has(w.id));
+              const newWorkouts = (localDay.workoutSessions || []).filter((w: any) => !existingWorkoutIds.has(w.id));
 
               mergedDays[date] = {
                 ...mergedDays[date],
                 meals: [...mergedDays[date].meals, ...newMeals],
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
-                water: Math.max(mergedDays[date].water, localDay.water || 0),
-                steps: Math.max(mergedDays[date].steps, localDay.steps || 0),
+                water: Math.max(mergedDays[date].water || 0, localDay.water || 0),
+                steps: Math.max(mergedDays[date].steps || 0, localDay.steps || 0),
                 weight: localDay.weight || mergedDays[date].weight,
                 bodyFat: localDay.bodyFat || mergedDays[date].bodyFat
               };
             }
           });
 
-          const updatedData = {
+          updatedData = {
             ...migratedRemote,
             days: mergedDays,
             syncSettings: { ...appData.syncSettings, lastSync: new Date().toISOString() }
           };
+        }
 
-          const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
-          if (success) {
-            setAppData(updatedData);
-            if (!silent) alert(t('gistSyncSuccess'));
-          } else {
-            throw new Error('Gist update failed');
-          }
+        const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
+        if (success) {
+          setAppData(updatedData);
+          if (!silent) alert(t('gistSyncSuccess'));
+        } else {
+          throw new Error('Failed to update Gist. Check your internet connection or token permissions.');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Gist Sync Error:', error);
-      if (!silent) alert(t('gistSyncError'));
+      if (!silent) alert(error.message || t('gistSyncError'));
+      throw error; // Re-throw so caller can handle UI state
     }
   };
 
-  // Automatic Sync Logic
   useEffect(() => {
-    const { githubToken, gistId } = appData.syncSettings;
+    const { githubToken, gistId, mode } = appData.syncSettings;
     if (githubToken && gistId) {
-      // 1. Auto-Pull on mount
-      syncWithGist(true);
+      // 1. Auto-Pull on mount or config change
+      syncWithGist(true).catch(() => {});
 
-      // 2. Auto-Push on visibility change (when user leaves the app)
+      // 2. Auto-Push on visibility change
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'hidden') {
-          syncWithGist(true);
+          syncWithGist(true).catch(() => {});
         } else if (document.visibilityState === 'visible') {
-          // Auto-Pull when returning to app
-          syncWithGist(true);
+          syncWithGist(true).catch(() => {});
         }
       };
 
       document.addEventListener('visibilitychange', handleVisibilityChange);
       return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
-  }, [appData.syncSettings.githubToken, appData.syncSettings.gistId]);
+  }, [appData.syncSettings.githubToken, appData.syncSettings.gistId, appData.syncSettings.mode]);
 
   return (
     <AppContext.Provider value={{ 

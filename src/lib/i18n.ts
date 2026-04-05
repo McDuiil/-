@@ -138,6 +138,10 @@ export const translations = {
     noRecords: "No training records yet",
     startNewWorkout: "Start New Workout",
     workoutSummary: "Workout Summary",
+    enterTokenAndGistId: "Please enter both GitHub Token and Gist ID",
+    confirmForcePull: "This will overwrite your local data with the cloud data. Are you sure?",
+    forcePull: "Force Pull",
+    forcePullTip: "Overwrite local data with cloud data",
   },
   zh: {
     dashboard: "仪表盘",
@@ -278,5 +282,9 @@ export const translations = {
     noRecords: "暂无训练记录",
     startNewWorkout: "开始新训练",
     workoutSummary: "训练总结",
+    enterTokenAndGistId: "请输入 GitHub Token 和 Gist ID",
+    confirmForcePull: "这将使用云端数据覆盖本地数据，确定吗？",
+    forcePull: "强制拉取",
+    forcePullTip: "使用云端数据覆盖本地数据",
   }
 };
