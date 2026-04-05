@@ -12,8 +12,12 @@ interface AppContextType {
   appData: AppData;
   setAppData: (data: AppData) => void;
   calculateBMR: (profile: Profile) => number;
-  mergeData: (incomingData: AppData) => void;
+  mergeData: (incomingData: any) => void;
   syncWithGist: (silent?: boolean) => Promise<void>;
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
+  activeTab: string;
+  setActiveTab: (tab: any) => void;
 }
 
 const defaultProfile: Profile = {
@@ -53,7 +57,7 @@ const initialData: AppData = {
   },
   days: {},
   customExercises: [],
-  enabledWidgets: ['calories', 'deficit', 'activity', 'water', 'quickWorkout', 'quickMeal'],
+  enabledWidgets: ['weight', 'calories', 'deficit', 'activity', 'water', 'quickWorkout', 'quickMeal'],
   categoryImages: {
     chest: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&auto=format&fit=crop&q=60',
     back: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&auto=format&fit=crop&q=60',
@@ -131,6 +135,7 @@ const migrateData = (data: any): AppData => {
           calories: day.c || 0, // In v2, 'c' might have been intake or cardio
           steps: day.steps || 0,
           water: day.water || 0,
+          weight: day.w || undefined, // Version 2 used 'w' for weight
           meals,
           workoutSessions
         };
@@ -154,6 +159,8 @@ const migrateData = (data: any): AppData => {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<Language>('zh');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [appData, setAppData] = useState<AppData>(() => {
     const saved = localStorage.getItem('utopia_data');
     if (saved) {
@@ -374,7 +381,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [appData.syncSettings.githubToken, appData.syncSettings.gistId]);
 
   return (
-    <AppContext.Provider value={{ language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist }}>
+    <AppContext.Provider value={{ 
+      language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist,
+      selectedDate, setSelectedDate, activeTab, setActiveTab
+    }}>
       {children}
     </AppContext.Provider>
   );

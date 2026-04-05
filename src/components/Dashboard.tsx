@@ -5,10 +5,11 @@ import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } f
 import { useApp } from "@/src/context/AppContext";
 
 export default function Dashboard() {
-  const { t, appData, language, calculateBMR, setAppData } = useApp();
+  const { t, appData, language, calculateBMR, setAppData, selectedDate, setSelectedDate, setActiveTab } = useApp();
   const [showWidgetManager, setShowWidgetManager] = useState(false);
   const today = new Date().toISOString().split('T')[0];
-  const dayData = appData.days[today] || { date: today, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
+  const isHistory = selectedDate !== today;
+  const dayData = appData.days[selectedDate] || { date: selectedDate, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
 
   const bmr = calculateBMR(appData.profile);
   const mealCalories = (dayData.meals || []).reduce((sum, m) => sum + (m.calories || 0), 0);
@@ -29,7 +30,8 @@ export default function Dashboard() {
 
   const formatDate = () => {
     const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' };
-    return new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en-US', options).format(new Date());
+    const date = new Date(selectedDate + 'T00:00:00');
+    return new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en-US', options).format(date);
   };
 
   const getTimeSlot = () => {
@@ -41,6 +43,7 @@ export default function Dashboard() {
   };
 
   const handleQuickLogMeal = () => {
+    if (isHistory) return;
     const meal = {
       id: Date.now().toString(),
       name: getTimeSlot(),
@@ -72,6 +75,19 @@ export default function Dashboard() {
 
   const isEnabled = (id: string) => (appData.enabledWidgets || []).includes(id);
 
+  const getWeightTrend = () => {
+    const dates = Object.keys(appData.days).sort().reverse();
+    const currentIndex = dates.indexOf(selectedDate);
+    if (currentIndex === -1 || currentIndex === dates.length - 1) return null;
+    
+    const prevDateWithWeight = dates.slice(currentIndex + 1).find(d => appData.days[d].weight);
+    if (!prevDateWithWeight || !dayData.weight) return null;
+    
+    const diff = dayData.weight - (appData.days[prevDateWithWeight].weight || 0);
+    return diff;
+  };
+
+  const weightTrend = getWeightTrend();
   const calorieGoal = appData.profile.customCalorieGoal || 2400;
 
   return (
@@ -79,7 +95,19 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between px-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("today")}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">
+              {isHistory ? t("viewingHistory") : t("today")}
+            </h1>
+            {isHistory && (
+              <button 
+                onClick={() => setSelectedDate(today)}
+                className="rounded-full bg-blue-500/20 px-2 py-1 text-[10px] font-bold text-blue-400"
+              >
+                {t("backToToday")}
+              </button>
+            )}
+          </div>
           <p className="text-white/40 dark:text-white/40 light:text-black/40">{formatDate()}</p>
         </div>
         <div className="flex items-center gap-3">
@@ -105,7 +133,7 @@ export default function Dashboard() {
         {isEnabled('quickWorkout') && (
           <GlassCard 
             className="flex flex-col justify-between p-4 aspect-square cursor-pointer active:scale-95 transition-transform bg-blue-500/10 border-blue-500/20"
-            onClick={() => (window as any).setTab?.('workouts')}
+            onClick={() => setActiveTab('workouts')}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500 text-white shadow-lg shadow-blue-500/30">
               <Play size={20} fill="currentColor" />
@@ -135,6 +163,24 @@ export default function Dashboard() {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-2 gap-4 px-4">
+        {isEnabled('weight') && (
+          <GlassCard className="flex flex-col gap-2 border-purple-500/20 bg-purple-500/5" delay={0.05}>
+            <div className="flex items-center gap-2 text-purple-400">
+              <Activity size={18} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t("weightTrend")}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold">{dayData.weight || appData.profile.weight}</span>
+              <span className="text-xs text-white/40 dark:text-white/40 light:text-black/40">kg</span>
+            </div>
+            {weightTrend !== null && (
+              <p className={`text-[10px] font-bold ${weightTrend <= 0 ? "text-green-400" : "text-red-400"}`}>
+                {weightTrend > 0 ? "+" : ""}{weightTrend.toFixed(1)} kg
+              </p>
+            )}
+          </GlassCard>
+        )}
+
         {isEnabled('calories') && (
           <GlassCard className="flex flex-col gap-2 border-orange-500/20 bg-orange-500/5" delay={0.1}>
             <div className="flex items-center gap-2 text-orange-400">
@@ -253,6 +299,7 @@ export default function Dashboard() {
             </div>
             <div className="grid grid-cols-1 gap-2">
               {[
+                { id: 'weight', label: t("weightTrend") },
                 { id: 'calories', label: t("calories") },
                 { id: 'deficit', label: t("deficitWidget") },
                 { id: 'activity', label: t("activityWidget") },

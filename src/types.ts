@@ -81,6 +81,7 @@ export interface DayData {
   calories: number;
   steps: number;
   water: number;
+  weight?: number;
   meals: CustomMeal[];
   workoutSessions: WorkoutSession[];
 }

@@ -6,7 +6,7 @@ import { Profile as ProfileType } from "@/src/types";
 import { SyncSettings } from "./SyncSettings";
 
 export default function Profile() {
-  const { t, language, setLanguage, theme, setTheme, appData, setAppData, calculateBMR } = useApp();
+  const { t, language, setLanguage, theme, setTheme, appData, setAppData, calculateBMR, setSelectedDate, setActiveTab } = useApp();
   const [showEditor, setShowEditor] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [tempProfile, setTempProfile] = useState<ProfileType>(appData.profile);
@@ -74,7 +74,11 @@ export default function Profile() {
       days.push(
         <div 
           key={d} 
-          className={`relative flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold transition-all ${
+          onClick={() => {
+            setSelectedDate(dateStr);
+            setActiveTab('dashboard');
+          }}
+          className={`relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-xs font-bold transition-all active:scale-90 ${
             hasData ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30" : "bg-white/5 text-white/40 dark:bg-white/5 dark:text-white/40 light:bg-black/5 light:text-black/40"
           } ${isToday ? "ring-2 ring-blue-500" : ""}`}
         >
