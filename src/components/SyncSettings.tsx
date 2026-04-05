@@ -140,8 +140,11 @@ export const SyncSettings: React.FC = () => {
           ) : (
             <Cloud className="w-5 h-5" />
           )}
-          <span className="text-sm font-bold">{t('gistSync')}</span>
+          <span className="text-sm font-bold">{isSyncing ? t('syncing') : t('gistSyncNow')}</span>
         </button>
+        <p className="text-[10px] text-center text-gray-500 italic">
+          {t('autoSyncTip')}
+        </p>
       </div>
 
       {/* Local Export/Import */}

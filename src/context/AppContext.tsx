@@ -13,7 +13,7 @@ interface AppContextType {
   setAppData: (data: AppData) => void;
   calculateBMR: (profile: Profile) => number;
   mergeData: (incomingData: AppData) => void;
-  syncWithGist: () => Promise<void>;
+  syncWithGist: (silent?: boolean) => Promise<void>;
 }
 
 const defaultProfile: Profile = {
@@ -158,10 +158,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const syncWithGist = async () => {
+  const syncWithGist = async (silent: boolean = false) => {
     const { githubToken, gistId, mode } = appData.syncSettings;
     if (!githubToken) {
-      alert(t('enterToken'));
+      if (!silent) alert(t('enterToken'));
       return;
     }
 
@@ -170,6 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let remoteData: AppData | null = null;
 
       if (!currentGistId) {
+        if (silent) return; // Don't auto-create Gist
         // Create new Gist if not exists
         const newGistId = await githubService.createGist(githubToken, appData);
         if (newGistId) {
@@ -221,7 +222,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
           if (success) {
             setAppData(updatedData);
-            alert(t('gistSyncSuccess'));
+            if (!silent) alert(t('gistSyncSuccess'));
           } else {
             throw new Error('Gist update failed');
           }
@@ -257,7 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
           if (success) {
             setAppData(updatedData);
-            alert(t('gistSyncSuccess'));
+            if (!silent) alert(t('gistSyncSuccess'));
           } else {
             throw new Error('Gist update failed');
           }
@@ -265,9 +266,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Gist Sync Error:', error);
-      alert(t('gistSyncError'));
+      if (!silent) alert(t('gistSyncError'));
     }
   };
+
+  // Automatic Sync Logic
+  useEffect(() => {
+    const { githubToken, gistId } = appData.syncSettings;
+    if (githubToken && gistId) {
+      // 1. Auto-Pull on mount
+      syncWithGist(true);
+
+      // 2. Auto-Push on visibility change (when user leaves the app)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          syncWithGist(true);
+        } else if (document.visibilityState === 'visible') {
+          // Auto-Pull when returning to app
+          syncWithGist(true);
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+  }, [appData.syncSettings.githubToken, appData.syncSettings.gistId]);
 
   return (
     <AppContext.Provider value={{ language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist }}>

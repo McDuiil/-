@@ -120,6 +120,9 @@ export const translations = {
     gistCreateError: "Gist Creation Failed",
     enterToken: "Enter GitHub Personal Access Token",
     enterGistId: "Enter Gist ID (Leave empty to create new)",
+    autoSyncTip: "Automatic sync is active (on start and when leaving app)",
+    gistSyncNow: "Sync Now",
+    syncing: "Syncing...",
   },
   zh: {
     dashboard: "仪表盘",
@@ -242,5 +245,8 @@ export const translations = {
     gistCreateError: "Gist 创建失败",
     enterToken: "输入 GitHub 个人访问令牌 (Token)",
     enterGistId: "输入 Gist ID (留空则自动创建)",
+    autoSyncTip: "自动同步已开启 (启动及切换应用时自动同步)",
+    gistSyncNow: "立即同步",
+    syncing: "同步中...",
   }
 };
