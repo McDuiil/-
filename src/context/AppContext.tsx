@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Language, Theme, AppData, Profile } from '../types';
+import { Language, Theme, AppData, Profile, DayData, CustomMeal, WorkoutSession } from '../types';
 import { translations } from '../lib/i18n';
 import { githubService } from '../services/githubService';
 
@@ -69,22 +69,101 @@ const initialData: AppData = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const migrateData = (data: any): AppData => {
+  const parsed = { ...data };
+  
+  // 1. Profile Migration
+  if (!parsed.profile) parsed.profile = { ...defaultProfile };
+  if (!parsed.profile.nickname) parsed.profile.nickname = defaultProfile.nickname;
+  if (!parsed.profile.avatar) parsed.profile.avatar = defaultProfile.avatar;
+  if (parsed.profile.useCustom !== undefined) {
+    parsed.profile.useCustomBMR = parsed.profile.useCustom;
+    delete parsed.profile.useCustom;
+  }
+  if (parsed.profile.useCustomBMR === undefined) parsed.profile.useCustomBMR = false;
+  if (parsed.profile.customBMR === null || parsed.profile.customBMR === undefined) parsed.profile.customBMR = 1558;
+
+  // 2. Nutrition Plan Migration
+  if (!parsed.nutritionPlan) {
+    parsed.nutritionPlan = { ...initialData.nutritionPlan };
+  }
+  if (!parsed.nutritionPlan.ratios) {
+    parsed.nutritionPlan.ratios = initialData.nutritionPlan.ratios;
+  }
+
+  // 3. Days Data Migration (Version 2 to 4)
+  const migratedDays: { [date: string]: DayData } = {};
+  if (parsed.days) {
+    Object.entries(parsed.days).forEach(([date, day]: [string, any]) => {
+      // Check if it's already in version 4 format
+      if (Array.isArray(day.meals) && Array.isArray(day.workoutSessions)) {
+        migratedDays[date] = day;
+      } else {
+        // Convert version 2 format
+        const meals: CustomMeal[] = [];
+        if (day.customMeals && day.customMeals._mealList) {
+          day.customMeals._mealList.forEach((m: any, idx: number) => {
+            meals.push({
+              id: `legacy-${date}-${idx}`,
+              name: m.n || 'Meal',
+              calories: m.k || 0,
+              protein: m.p || 0,
+              carbs: m.c || 0,
+              fat: m.f || 0,
+              time: m.t || '00:00'
+            });
+          });
+        }
+
+        const workoutSessions: WorkoutSession[] = [];
+        if (day.ps) { // If there was a workout part
+          workoutSessions.push({
+            id: `legacy-workout-${date}`,
+            startTime: '00:00',
+            exercises: [],
+            calories: day.s || 0, // Assuming 's' was strength/workout calories
+            category: day.ps
+          });
+        }
+
+        migratedDays[date] = {
+          date,
+          calories: day.c || 0, // In v2, 'c' might have been intake or cardio
+          steps: day.steps || 0,
+          water: day.water || 0,
+          meals,
+          workoutSessions
+        };
+      }
+    });
+  }
+  parsed.days = migratedDays;
+
+  // 4. Other Fields
+  if (!parsed.customExercises) parsed.customExercises = [];
+  if (!parsed.enabledWidgets) parsed.enabledWidgets = initialData.enabledWidgets;
+  if (!parsed.categoryImages) parsed.categoryImages = initialData.categoryImages;
+  if (!parsed.syncSettings) parsed.syncSettings = initialData.syncSettings;
+  if (!parsed.phase) parsed.phase = 1;
+  if (!parsed.mode) parsed.mode = 'train';
+  
+  parsed.version = 4; // Mark as migrated
+  return parsed as AppData;
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<Language>('zh');
   const [theme, setTheme] = useState<Theme>('dark');
   const [appData, setAppData] = useState<AppData>(() => {
     const saved = localStorage.getItem('utopia_data');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      // Migration for new fields
-      if (!parsed.profile.nickname) parsed.profile.nickname = defaultProfile.nickname;
-      if (!parsed.profile.avatar) parsed.profile.avatar = defaultProfile.avatar;
-      if (!parsed.nutritionPlan.ratios) parsed.nutritionPlan.ratios = initialData.nutritionPlan.ratios;
-      if (!parsed.customExercises) parsed.customExercises = [];
-      if (!parsed.enabledWidgets) parsed.enabledWidgets = initialData.enabledWidgets;
-      if (!parsed.categoryImages) parsed.categoryImages = initialData.categoryImages;
-      if (!parsed.syncSettings) parsed.syncSettings = initialData.syncSettings;
-      return parsed as AppData;
+      try {
+        const parsed = JSON.parse(saved);
+        return migrateData(parsed);
+      } catch (e) {
+        console.error("Failed to parse or migrate data:", e);
+        return initialData;
+      }
     }
     return initialData;
   });
@@ -109,13 +188,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return translations[language][key] || key;
   };
 
-  const mergeData = (incomingData: AppData) => {
+  const mergeData = (incomingData: any) => {
+    const migratedIncoming = migrateData(incomingData);
     setAppData(prev => {
       // If current device is PC, merge incoming data (from Mobile)
       if (prev.syncSettings.mode === 'pc') {
         const mergedDays = { ...prev.days };
         
-        Object.entries(incomingData.days).forEach(([date, dayData]) => {
+        Object.entries(migratedIncoming.days).forEach(([date, dayData]) => {
           if (!mergedDays[date]) {
             mergedDays[date] = dayData;
           } else {
@@ -148,7 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         // If current device is Mobile, overwrite with incoming data (from PC)
         return {
-          ...incomingData,
+          ...migratedIncoming,
           syncSettings: {
             ...prev.syncSettings, // Keep local sync mode
             lastSync: new Date().toISOString()
@@ -189,11 +269,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (remoteData) {
+        const migratedRemote = migrateData(remoteData);
         // Merge Logic
         if (mode === 'pc') {
           // PC Master: Pull remote (mobile inputs) -> Merge -> Push back
           const mergedDays = { ...appData.days };
-          Object.entries(remoteData.days).forEach(([date, dayData]) => {
+          Object.entries(migratedRemote.days).forEach(([date, dayData]) => {
             const remoteDay = dayData as any;
             if (!mergedDays[date]) {
               mergedDays[date] = remoteDay;
@@ -228,7 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } else {
           // Mobile Input: Pull remote (PC master) -> Append local new items -> Push back
-          const mergedDays = { ...remoteData.days };
+          const mergedDays = { ...migratedRemote.days };
           Object.entries(appData.days).forEach(([date, dayData]) => {
             const localDay = dayData as any;
             if (!mergedDays[date]) {
@@ -250,7 +331,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
 
           const updatedData = {
-            ...remoteData,
+            ...migratedRemote,
             days: mergedDays,
             syncSettings: { ...appData.syncSettings, lastSync: new Date().toISOString() }
           };
