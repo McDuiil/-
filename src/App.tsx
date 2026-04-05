@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "./context/AppContext";
 import GlassCard from "./components/GlassCard";
 import { X } from "lucide-react";
+import { getTodayStr } from "./lib/utils";
 
 type Tab = "dashboard" | "workouts" | "nutrition" | "profile";
 
@@ -18,7 +19,7 @@ export default function App() {
   const [tempBodyFat, setTempBodyFat] = useState<string>("");
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     const hasWeightToday = appData.days[today]?.weight;
     
     // Only prompt if today's weight is missing and we haven't prompted in this session
@@ -31,7 +32,7 @@ export default function App() {
   }, [appData.days]);
 
   const handleSaveWeight = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     const weightNum = parseFloat(tempWeight);
     const bodyFatNum = parseFloat(tempBodyFat);
     

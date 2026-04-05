@@ -4,11 +4,12 @@ import GlassCard from "./GlassCard";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useApp } from "@/src/context/AppContext";
 import { DayData } from "../types";
+import { getTodayStr } from "../lib/utils";
 
 export default function Dashboard() {
   const { t, appData, language, calculateBMR, setAppData, selectedDate, setSelectedDate, setActiveTab } = useApp();
   const [showWidgetManager, setShowWidgetManager] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayStr();
   const isHistory = selectedDate !== today;
   const dayData = appData.days[selectedDate] || { date: selectedDate, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
   console.log("Viewing date:", selectedDate, "Day data:", dayData);

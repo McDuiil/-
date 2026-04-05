@@ -132,6 +132,12 @@ export const translations = {
     weightChanged: "Weight Change",
     clearAll: "Clear All",
     delete: "Delete",
+    trainingRecords: "Training Records",
+    duration: "Duration",
+    min: "min",
+    noRecords: "No training records yet",
+    startNewWorkout: "Start New Workout",
+    workoutSummary: "Workout Summary",
   },
   zh: {
     dashboard: "仪表盘",
@@ -266,5 +272,11 @@ export const translations = {
     weightChanged: "体重变化",
     clearAll: "一键移除",
     delete: "删除",
+    trainingRecords: "训练记录",
+    duration: "时长",
+    min: "分钟",
+    noRecords: "暂无训练记录",
+    startNewWorkout: "开始新训练",
+    workoutSummary: "训练总结",
   }
 };

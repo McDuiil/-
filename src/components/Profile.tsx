@@ -4,6 +4,7 @@ import GlassCard from "./GlassCard";
 import { useApp } from "@/src/context/AppContext";
 import { Profile as ProfileType } from "@/src/types";
 import { SyncSettings } from "./SyncSettings";
+import { getTodayStr } from "../lib/utils";
 
 export default function Profile() {
   const { t, language, setLanguage, theme, setTheme, appData, setAppData, calculateBMR, setSelectedDate, setActiveTab, mergeData, syncWithGist } = useApp();
@@ -17,7 +18,7 @@ export default function Profile() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `utopia_data_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `utopia_data_${getTodayStr()}.json`;
     link.click();
   };
 
@@ -44,7 +45,7 @@ export default function Profile() {
   };
 
   const currentBMR = calculateBMR(appData.profile);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayStr();
   const dayData = appData.days[today] || { date: today, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
   const mealCalories = (dayData.meals || []).reduce((sum, m) => sum + (m.calories || 0), 0);
   const workoutCalories = (dayData.workoutSessions || []).reduce((sum, s) => sum + (s.calories || 0), 0);
@@ -70,7 +71,7 @@ export default function Profile() {
     for (let d = 1; d <= totalDays; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const hasData = appData.days[dateStr];
-      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+      const isToday = getTodayStr() === dateStr;
 
       days.push(
         <div 

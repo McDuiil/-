@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Language, Theme, AppData, Profile, DayData, CustomMeal, WorkoutSession } from '../types';
 import { translations } from '../lib/i18n';
 import { githubService } from '../services/githubService';
+import { getTodayStr } from '../lib/utils';
 
 interface AppContextType {
   language: Language;
@@ -162,7 +163,7 @@ const migrateData = (data: any): AppData => {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<Language>('zh');
   const [theme, setTheme] = useState<Theme>('dark');
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayStr());
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [appData, setAppData] = useState<AppData>(() => {
     const saved = localStorage.getItem('utopia_data');

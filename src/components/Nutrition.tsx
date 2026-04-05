@@ -3,6 +3,7 @@ import { Plus, Clock, ChevronRight, PieChart, Utensils, X, Calendar, Zap, Settin
 import GlassCard from "./GlassCard";
 import { useApp } from "@/src/context/AppContext";
 import { CustomMeal, NutritionPlan } from "@/src/types";
+import { getTodayStr } from "../lib/utils";
 
 export default function Nutrition() {
   const { t, language, appData, setAppData, calculateBMR } = useApp();
@@ -16,7 +17,7 @@ export default function Nutrition() {
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   });
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayStr();
   const dayData = appData.days[today] || { date: today, calories: 0, steps: 0, water: 0, meals: [] };
   
   const bmr = calculateBMR(appData.profile);
@@ -134,7 +135,7 @@ export default function Nutrition() {
   const copyToTomorrow = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
     
     const tomorrowData = appData.days[tomorrowStr] || { date: tomorrowStr, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
     
