@@ -189,6 +189,15 @@ export default function Profile() {
                   onChange={e => setTempProfile({...tempProfile, weight: Number(e.target.value)})}
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 dark:text-white/40 light:text-black/40">{t("bodyFat")} (%)</label>
+                <input 
+                  type="number" 
+                  className="w-full rounded-xl bg-white/5 px-3 py-2 text-sm outline-none dark:bg-white/5 light:bg-black/5"
+                  value={tempProfile.bodyFat}
+                  onChange={e => setTempProfile({...tempProfile, bodyFat: Number(e.target.value)})}
+                />
+              </div>
             </div>
 
             <div className="space-y-1">

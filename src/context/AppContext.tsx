@@ -137,6 +137,7 @@ const migrateData = (data: any): AppData => {
           steps: day.steps || 0,
           water: day.water || 0,
           weight: day.w || undefined, // Version 2 used 'w' for weight
+          bodyFat: day.bf || undefined, // Assuming 'bf' for body fat in v2 if it existed
           meals,
           workoutSessions
         };
@@ -223,7 +224,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
               water: Math.max(mergedDays[date].water, dayData.water || 0),
               steps: Math.max(mergedDays[date].steps, dayData.steps || 0),
-              weight: dayData.weight || mergedDays[date].weight
+              weight: dayData.weight || mergedDays[date].weight,
+              bodyFat: dayData.bodyFat || mergedDays[date].bodyFat
             };
           }
         });
@@ -301,7 +303,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
                 water: Math.max(mergedDays[date].water, remoteDay.water || 0),
                 steps: Math.max(mergedDays[date].steps, remoteDay.steps || 0),
-                weight: remoteDay.weight || mergedDays[date].weight
+                weight: remoteDay.weight || mergedDays[date].weight,
+                bodyFat: remoteDay.bodyFat || mergedDays[date].bodyFat
               };
             }
           });
@@ -338,7 +341,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
                 water: Math.max(mergedDays[date].water, localDay.water || 0),
                 steps: Math.max(mergedDays[date].steps, localDay.steps || 0),
-                weight: localDay.weight || mergedDays[date].weight
+                weight: localDay.weight || mergedDays[date].weight,
+                bodyFat: localDay.bodyFat || mergedDays[date].bodyFat
               };
             }
           });

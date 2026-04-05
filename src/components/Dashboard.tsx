@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Activity, Flame, Footprints, Droplets, Plus, Play, Utensils, Settings, X, Check } from "lucide-react";
 import GlassCard from "./GlassCard";
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useApp } from "@/src/context/AppContext";
+import { DayData } from "../types";
 
 export default function Dashboard() {
   const { t, appData, language, calculateBMR, setAppData, selectedDate, setSelectedDate, setActiveTab } = useApp();
@@ -44,26 +45,7 @@ export default function Dashboard() {
   };
 
   const handleQuickLogMeal = () => {
-    if (isHistory) return;
-    const meal = {
-      id: Date.now().toString(),
-      name: getTimeSlot(),
-      calories: 400,
-      protein: 20,
-      carbs: 50,
-      fat: 10,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setAppData({
-      ...appData,
-      days: {
-        ...appData.days,
-        [today]: {
-          ...dayData,
-          meals: [...(dayData.meals || []), meal]
-        }
-      }
-    });
+    setActiveTab('nutrition');
   };
 
   const toggleWidget = (id: string) => {
@@ -91,12 +73,13 @@ export default function Dashboard() {
 
   const getWeightHistory = () => {
     return Object.entries(appData.days)
-      .filter(([_, data]) => data.weight !== undefined)
+      .filter(([_, data]) => (data as DayData).weight !== undefined || (data as DayData).bodyFat !== undefined)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .slice(-7)
       .map(([date, data]) => ({
         date: date.split('-').slice(1).join('/'),
-        weight: data.weight
+        weight: (data as DayData).weight,
+        bodyFat: (data as DayData).bodyFat
       }));
   };
 
@@ -250,11 +233,15 @@ export default function Dashboard() {
             </div>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weightHistoryData.length > 0 ? weightHistoryData : [{date: 'N/A', weight: appData.profile.weight}]}>
+                <AreaChart data={weightHistoryData.length > 0 ? weightHistoryData : [{date: 'N/A', weight: appData.profile.weight, bodyFat: appData.profile.bodyFat}]}>
                   <defs>
                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorBodyFat" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
@@ -264,17 +251,39 @@ export default function Dashboard() {
                     tickLine={false} 
                     tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
                   />
+                  <YAxis 
+                    yId="left"
+                    orientation="left"
+                    hide
+                  />
+                  <YAxis 
+                    yId="right"
+                    orientation="right"
+                    hide
+                  />
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                     itemStyle={{ color: '#fff' }}
-                    formatter={(value: number) => [`${value} kg`, t('weight')]}
                   />
                   <Area 
+                    yId="left"
                     type="monotone" 
                     dataKey="weight" 
+                    name={t('weight')}
                     stroke="#a855f7" 
                     fillOpacity={1} 
                     fill="url(#colorWeight)" 
+                    strokeWidth={2}
+                    animationDuration={1500}
+                  />
+                  <Area 
+                    yId="right"
+                    type="monotone" 
+                    dataKey="bodyFat" 
+                    name={t('bodyFat')}
+                    stroke="#ec4899" 
+                    fillOpacity={1} 
+                    fill="url(#colorBodyFat)" 
                     strokeWidth={2}
                     animationDuration={1500}
                   />

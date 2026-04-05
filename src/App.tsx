@@ -15,6 +15,7 @@ export default function App() {
   const { appData, setAppData, t, selectedDate, setSelectedDate, activeTab, setActiveTab } = useApp();
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
   const [tempWeight, setTempWeight] = useState<string>("");
+  const [tempBodyFat, setTempBodyFat] = useState<string>("");
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -23,6 +24,8 @@ export default function App() {
     // Only prompt if today's weight is missing and we haven't prompted in this session
     if (!hasWeightToday && !sessionStorage.getItem('weightPromptShown')) {
       setShowWeightPrompt(true);
+      setTempWeight(appData.profile.weight.toString());
+      setTempBodyFat(appData.profile.bodyFat.toString());
       sessionStorage.setItem('weightPromptShown', 'true');
     }
   }, [appData.days]);
@@ -30,6 +33,8 @@ export default function App() {
   const handleSaveWeight = () => {
     const today = new Date().toISOString().split('T')[0];
     const weightNum = parseFloat(tempWeight);
+    const bodyFatNum = parseFloat(tempBodyFat);
+    
     if (isNaN(weightNum)) return;
 
     const updatedDays = { ...appData.days };
@@ -40,16 +45,25 @@ export default function App() {
         steps: 0,
         water: 0,
         weight: weightNum,
+        bodyFat: isNaN(bodyFatNum) ? undefined : bodyFatNum,
         meals: [],
         workoutSessions: []
       };
     } else {
-      updatedDays[today] = { ...updatedDays[today], weight: weightNum };
+      updatedDays[today] = { 
+        ...updatedDays[today], 
+        weight: weightNum,
+        bodyFat: isNaN(bodyFatNum) ? updatedDays[today].bodyFat : bodyFatNum
+      };
     }
 
     setAppData({
       ...appData,
-      profile: { ...appData.profile, weight: weightNum },
+      profile: { 
+        ...appData.profile, 
+        weight: weightNum,
+        bodyFat: isNaN(bodyFatNum) ? appData.profile.bodyFat : bodyFatNum
+      },
       days: updatedDays
     });
     setShowWeightPrompt(false);
@@ -105,17 +119,30 @@ export default function App() {
               </button>
             </div>
             <div className="space-y-4">
-              <p className="text-sm text-white/60">{t("enterWeight")}</p>
-              <input 
-                type="number" 
-                step="0.1"
-                autoFocus
-                className="w-full rounded-2xl bg-white/5 px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={appData.profile.weight.toString()}
-                value={tempWeight}
-                onChange={e => setTempWeight(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSaveWeight()}
-              />
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-white/40">{t("enterWeight")}</p>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  autoFocus
+                  className="w-full rounded-2xl bg-white/5 px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={appData.profile.weight.toString()}
+                  value={tempWeight}
+                  onChange={e => setTempWeight(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-white/40">{t("enterBodyFat")}</p>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  className="w-full rounded-2xl bg-white/5 px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder={appData.profile.bodyFat.toString()}
+                  value={tempBodyFat}
+                  onChange={e => setTempBodyFat(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSaveWeight()}
+                />
+              </div>
               <button 
                 onClick={handleSaveWeight}
                 className="w-full rounded-2xl bg-blue-500 py-4 text-sm font-bold text-white transition-transform active:scale-95 shadow-lg shadow-blue-500/20"
