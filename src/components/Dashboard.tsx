@@ -10,6 +10,7 @@ export default function Dashboard() {
   const today = new Date().toISOString().split('T')[0];
   const isHistory = selectedDate !== today;
   const dayData = appData.days[selectedDate] || { date: selectedDate, calories: 0, steps: 0, water: 0, meals: [], workoutSessions: [] };
+  console.log("Viewing date:", selectedDate, "Day data:", dayData);
 
   const bmr = calculateBMR(appData.profile);
   const mealCalories = (dayData.meals || []).reduce((sum, m) => sum + (m.calories || 0), 0);
@@ -81,6 +82,7 @@ export default function Dashboard() {
     if (currentIndex === -1 || currentIndex === dates.length - 1) return null;
     
     const prevDateWithWeight = dates.slice(currentIndex + 1).find(d => appData.days[d].weight);
+    console.log("Current date:", selectedDate, "Weight:", dayData.weight, "Prev date with weight:", prevDateWithWeight, "Prev weight:", prevDateWithWeight ? appData.days[prevDateWithWeight].weight : 'N/A');
     if (!prevDateWithWeight || !dayData.weight) return null;
     
     const diff = dayData.weight - (appData.days[prevDateWithWeight].weight || 0);
@@ -170,7 +172,9 @@ export default function Dashboard() {
               <span className="text-[10px] font-bold uppercase tracking-widest">{t("weightTrend")}</span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold">{dayData.weight || appData.profile.weight}</span>
+              <span className="text-2xl font-bold">
+                {dayData.weight !== undefined ? dayData.weight : (isHistory ? '---' : appData.profile.weight)}
+              </span>
               <span className="text-xs text-white/40 dark:text-white/40 light:text-black/40">kg</span>
             </div>
             {weightTrend !== null && (

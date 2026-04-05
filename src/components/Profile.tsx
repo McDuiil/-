@@ -6,7 +6,7 @@ import { Profile as ProfileType } from "@/src/types";
 import { SyncSettings } from "./SyncSettings";
 
 export default function Profile() {
-  const { t, language, setLanguage, theme, setTheme, appData, setAppData, calculateBMR, setSelectedDate, setActiveTab } = useApp();
+  const { t, language, setLanguage, theme, setTheme, appData, setAppData, calculateBMR, setSelectedDate, setActiveTab, mergeData, syncWithGist } = useApp();
   const [showEditor, setShowEditor] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [tempProfile, setTempProfile] = useState<ProfileType>(appData.profile);
@@ -28,10 +28,11 @@ export default function Profile() {
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        setAppData(json);
-        alert("Data imported successfully!");
+        console.log("Importing JSON:", json);
+        mergeData(json);
+        alert(t("syncSuccess"));
       } catch (err) {
-        alert("Invalid JSON file");
+        alert(t("syncError"));
       }
     };
     reader.readAsText(file);

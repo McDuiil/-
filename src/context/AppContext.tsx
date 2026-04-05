@@ -74,6 +74,7 @@ const initialData: AppData = {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const migrateData = (data: any): AppData => {
+  console.log("Migrating data from version:", data.version || 1);
   const parsed = { ...data };
   
   // 1. Profile Migration
@@ -139,6 +140,7 @@ const migrateData = (data: any): AppData => {
           meals,
           workoutSessions
         };
+        console.log(`Migrated day ${date}: weight = ${migratedDays[date].weight}`);
       }
     });
   }
@@ -196,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const mergeData = (incomingData: any) => {
+    console.log("Merging incoming data. Incoming version:", incomingData.version || 1);
     const migratedIncoming = migrateData(incomingData);
     setAppData(prev => {
       // If current device is PC, merge incoming data (from Mobile)
@@ -218,8 +221,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ...mergedDays[date],
               meals: [...mergedDays[date].meals, ...newMeals],
               workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
-              water: Math.max(mergedDays[date].water, dayData.water),
-              steps: Math.max(mergedDays[date].steps, dayData.steps)
+              water: Math.max(mergedDays[date].water, dayData.water || 0),
+              steps: Math.max(mergedDays[date].steps, dayData.steps || 0),
+              weight: dayData.weight || mergedDays[date].weight
             };
           }
         });
@@ -296,7 +300,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 meals: [...mergedDays[date].meals, ...newMeals],
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
                 water: Math.max(mergedDays[date].water, remoteDay.water || 0),
-                steps: Math.max(mergedDays[date].steps, remoteDay.steps || 0)
+                steps: Math.max(mergedDays[date].steps, remoteDay.steps || 0),
+                weight: remoteDay.weight || mergedDays[date].weight
               };
             }
           });
@@ -332,7 +337,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 meals: [...mergedDays[date].meals, ...newMeals],
                 workoutSessions: [...mergedDays[date].workoutSessions, ...newWorkouts],
                 water: Math.max(mergedDays[date].water, localDay.water || 0),
-                steps: Math.max(mergedDays[date].steps, localDay.steps || 0)
+                steps: Math.max(mergedDays[date].steps, localDay.steps || 0),
+                weight: localDay.weight || mergedDays[date].weight
               };
             }
           });
