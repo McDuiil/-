@@ -25,11 +25,14 @@ export interface Ingredient {
 export interface CustomMeal {
   id: string;
   name: string;
-  calories: number;
   protein: number;
   carbs: number;
   fat: number;
   time: string;
+  ingredients?: Ingredient[];
+  updatedAt?: number;
+  deleted?: boolean;
+  archived?: boolean;
 }
 
 export interface WorkoutSet {
@@ -51,34 +54,68 @@ export interface WorkoutSession {
   exercises: WorkoutSessionExercise[];
   calories: number;
   category?: string;
+  updatedAt?: number;
+  deleted?: boolean;
+  archived?: boolean;
 }
 
-export interface MacroRatio {
-  protein: number; // percentage (0-100)
+export interface MacroGrams {
+  protein: number;
   carbs: number;
   fat: number;
 }
 
-export interface NutritionPlan {
-  type: 'standard' | 'carb-cycling' | 'carb-tapering';
-  currentPhase?: number;
-  isTrainingDay: boolean;
-  ratios: {
-    standard: MacroRatio;
-    carbCycling: {
-      training: MacroRatio;
-      rest: MacroRatio;
-    };
-    carbTapering: {
-      initial: MacroRatio;
-      final: MacroRatio;
-    };
+export interface DayTypeConfig {
+  trainingDay: MacroGrams;
+  restDay: MacroGrams;
+}
+
+export interface NutritionSettings {
+  mode: 'standard' | 'carb-cycling' | 'cut-phases';
+  startDate: string;
+  manualPhase?: number;
+  standard: DayTypeConfig;
+  carbCycling: DayTypeConfig;
+  cutPhases: DayTypeConfig[];
+}
+
+export interface ResolvedNutritionToday {
+  baseGoal: MacroGrams;
+  dynamicGoal: MacroGrams;
+  consumed: MacroGrams;
+  remaining: MacroGrams;
+  calories: {
+    baseGoal: number;
+    dynamicGoal: number;
+    consumed: number;
+    remaining: number;
   };
+  percentage: {
+    protein: number;
+    carbs: number;
+    fat: number;
+    calories: number;
+  };
+  metadata: {
+    currentDayType: 'training' | 'rest';
+    currentPhase: number;
+    dayTypeSource: 'manual' | 'auto' | 'session';
+    phaseSource: 'manual' | 'auto';
+  };
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  brand?: string;
+  state: 'raw' | 'cooked';
+  nutrientsPer100g: MacroGrams;
+  userOverride: boolean;
+  source: 'api' | 'local' | 'user';
 }
 
 export interface DayData {
   date: string;
-  calories: number;
   steps: number;
   water: number;
   weight?: number;
@@ -94,17 +131,42 @@ export interface SyncSettings {
   gistId?: string;
 }
 
+export interface SuggestedMeal {
+  id: string;
+  name: string;
+  time: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  ingredients: Ingredient[];
+}
+
+export interface DietTemplate {
+  phase: number;
+  trainingMeals: SuggestedMeal[];
+  restMeals: SuggestedMeal[];
+}
+
+export interface DietPlan {
+  id: string;
+  name: string;
+  templates: DietTemplate[];
+}
+
 export interface AppData {
   version: number;
-  phase: number;
-  mode: string;
   profile: Profile;
-  nutritionPlan: NutritionPlan;
+  nutritionSettings: NutritionSettings;
+  dietPlans: DietPlan[];
+  activeDietPlanId?: string;
   days: { [date: string]: DayData };
   customExercises: Exercise[];
+  foodLibrary: FoodItem[];
+  customCategories?: string[];
   enabledWidgets: string[];
   categoryImages: { [key: string]: string };
   syncSettings: SyncSettings;
+  activeWorkoutSession?: WorkoutSession | null;
 }
 
 export interface Exercise {

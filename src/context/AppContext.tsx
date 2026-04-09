@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Language, Theme, AppData, Profile, DayData, CustomMeal, WorkoutSession } from '../types';
+import { Language, Theme, AppData, Profile, DayData, CustomMeal, WorkoutSession, ResolvedNutritionToday, NutritionSettings, MacroGrams, DayTypeConfig } from '../types';
 import { translations } from '../lib/i18n';
 import { githubService } from '../services/githubService';
-import { getTodayStr } from '../lib/utils';
+import { getTodayStr, calcCalories } from '../lib/utils';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { auth, db, signInWithGoogle, logout as firebaseLogout, onAuthStateChanged, User, doc, setDoc, onSnapshot, collection, OperationType, handleFirestoreError } from '../firebase';
 
 interface AppContextType {
   language: Language;
@@ -15,10 +17,20 @@ interface AppContextType {
   calculateBMR: (profile: Profile) => number;
   mergeData: (incomingData: any) => void;
   syncWithGist: (silent?: boolean) => Promise<void>;
+  showToast: (message: string, type?: 'success' | 'error') => void;
+  signIn: () => Promise<void>;
+  logout: () => Promise<void>;
+  pushAllToCloud: () => Promise<void>;
+  saveAppDataToCloud: (data: AppData) => Promise<void>;
+  user: User | null;
+  isAuthReady: boolean;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
   activeTab: string;
   setActiveTab: (tab: any) => void;
+  resolvedNutritionToday: ResolvedNutritionToday;
+  sessionDayType: 'training' | 'rest' | null;
+  setSessionDayType: (type: 'training' | 'rest' | null) => void;
 }
 
 const defaultProfile: Profile = {
@@ -37,28 +49,32 @@ const defaultProfile: Profile = {
 };
 
 const initialData: AppData = {
-  version: 4,
-  phase: 1,
-  mode: "train",
+  version: 5,
   profile: defaultProfile,
-  nutritionPlan: {
-    type: 'standard',
-    isTrainingDay: true,
-    ratios: {
-      standard: { protein: 30, carbs: 40, fat: 30 },
-      carbCycling: {
-        training: { protein: 25, carbs: 60, fat: 15 },
-        rest: { protein: 40, carbs: 20, fat: 40 }
-      },
-      carbTapering: {
-        initial: { protein: 40, carbs: 50, fat: 10 },
-        final: { protein: 40, carbs: 10, fat: 50 }
-      }
-    }
+  nutritionSettings: {
+    mode: 'standard',
+    startDate: getTodayStr(),
+    standard: {
+      trainingDay: { protein: 160, carbs: 200, fat: 60 },
+      restDay: { protein: 160, carbs: 100, fat: 80 }
+    },
+    carbCycling: {
+      trainingDay: { protein: 160, carbs: 300, fat: 40 },
+      restDay: { protein: 160, carbs: 50, fat: 90 }
+    },
+    cutPhases: [
+      { trainingDay: { protein: 180, carbs: 200, fat: 50 }, restDay: { protein: 180, carbs: 100, fat: 60 } },
+      { trainingDay: { protein: 180, carbs: 150, fat: 50 }, restDay: { protein: 180, carbs: 80, fat: 60 } },
+      { trainingDay: { protein: 180, carbs: 100, fat: 50 }, restDay: { protein: 180, carbs: 50, fat: 60 } },
+      { trainingDay: { protein: 180, carbs: 50, fat: 50 }, restDay: { protein: 180, carbs: 30, fat: 60 } }
+    ]
   },
   days: {},
+  dietPlans: [],
+  activeDietPlanId: undefined,
   customExercises: [],
-  enabledWidgets: ['weight', 'calories', 'deficit', 'activity', 'water', 'quickWorkout', 'quickMeal'],
+  foodLibrary: [],
+  enabledWidgets: ['weight', 'bodyFat', 'calories', 'deficit', 'activity', 'water', 'quickWorkout', 'quickMeal'],
   categoryImages: {
     chest: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&auto=format&fit=crop&q=60',
     back: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&auto=format&fit=crop&q=60',
@@ -69,102 +85,131 @@ const initialData: AppData = {
   },
   syncSettings: {
     mode: 'pc'
-  }
+  },
+  activeWorkoutSession: null
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const migrateData = (data: any): AppData => {
-  console.log("Migrating data from version:", data.version || 1);
   const parsed = { ...data };
   
-  // 1. Profile Migration
+  // Ensure top-level objects exist
   if (!parsed.profile) parsed.profile = { ...defaultProfile };
+  if (!parsed.days) parsed.days = {};
+  if (!parsed.customExercises) parsed.customExercises = [];
+  if (!parsed.foodLibrary) parsed.foodLibrary = [];
+  if (!parsed.enabledWidgets) parsed.enabledWidgets = [...initialData.enabledWidgets];
+  if (!parsed.categoryImages) parsed.categoryImages = { ...initialData.categoryImages };
+  if (!parsed.syncSettings) parsed.syncSettings = { ...initialData.syncSettings };
+  
+  // Migration: Initialize dietPlans if missing
+  if (!parsed.dietPlans) {
+    parsed.dietPlans = [];
+    // Migrate old dietTemplates if they exist
+    if (parsed.dietTemplates && parsed.dietTemplates.length > 0) {
+      parsed.dietPlans.push({
+        id: 'legacy-plan',
+        name: 'Imported Plan',
+        templates: parsed.dietTemplates
+      });
+      parsed.activeDietPlanId = 'legacy-plan';
+    }
+  }
+  delete parsed.dietTemplates;
+
+  // 1. Profile Migration
   if (!parsed.profile.nickname) parsed.profile.nickname = defaultProfile.nickname;
   if (!parsed.profile.avatar) parsed.profile.avatar = defaultProfile.avatar;
-  if (parsed.profile.useCustom !== undefined) {
-    parsed.profile.useCustomBMR = parsed.profile.useCustom;
-    delete parsed.profile.useCustom;
-  }
+  if (parsed.profile.gender === undefined) parsed.profile.gender = defaultProfile.gender;
+  if (parsed.profile.age === undefined) parsed.profile.age = defaultProfile.age;
+  if (parsed.profile.height === undefined) parsed.profile.height = defaultProfile.height;
+  if (parsed.profile.weight === undefined) parsed.profile.weight = defaultProfile.weight;
   if (parsed.profile.useCustomBMR === undefined) parsed.profile.useCustomBMR = false;
   if (parsed.profile.customBMR === null || parsed.profile.customBMR === undefined) parsed.profile.customBMR = 1558;
 
-  // 2. Nutrition Plan Migration
-  if (!parsed.nutritionPlan) {
-    parsed.nutritionPlan = { ...initialData.nutritionPlan };
+  // 2. Nutrition Settings Migration (Version 5)
+  if (!parsed.nutritionSettings) {
+    console.log("Initializing nutrition settings...");
+    parsed.nutritionSettings = { ...initialData.nutritionSettings };
+  } else if (parsed.version < 5) {
+    console.log("Upgrading nutrition settings to version 5...");
+    // Merge existing settings with new structure to avoid complete reset
+    parsed.nutritionSettings = {
+      ...initialData.nutritionSettings,
+      ...parsed.nutritionSettings,
+      standard: parsed.nutritionSettings.standard || initialData.nutritionSettings.standard,
+      carbCycling: parsed.nutritionSettings.carbCycling || initialData.nutritionSettings.carbCycling,
+      cutPhases: parsed.nutritionSettings.cutPhases || initialData.nutritionSettings.cutPhases
+    };
+    
+    // Attempt to preserve some old data if it exists
+    if (parsed.nutritionPlan) {
+      const oldPlan = parsed.nutritionPlan;
+      if (oldPlan.type === 'carb-cycling') parsed.nutritionSettings.mode = 'carb-cycling';
+      if (oldPlan.type === 'carb-tapering') parsed.nutritionSettings.mode = 'cut-phases';
+    }
   }
-  if (!parsed.nutritionPlan.ratios) {
-    parsed.nutritionPlan.ratios = initialData.nutritionPlan.ratios;
-  }
+  
+  // Ensure version is set to current
+  parsed.version = 5;
 
-  // 3. Days Data Migration (Version 2 to 4)
+  // 3. Days Data Migration (Remove stored calories)
   const migratedDays: { [date: string]: DayData } = {};
   if (parsed.days) {
     Object.entries(parsed.days).forEach(([date, day]: [string, any]) => {
-      // Check if it's already in version 4 format
-      if (Array.isArray(day.meals) && Array.isArray(day.workoutSessions)) {
-        migratedDays[date] = day;
-      } else {
-        // Convert version 2 format
-        const meals: CustomMeal[] = [];
-        if (day.customMeals && day.customMeals._mealList) {
-          day.customMeals._mealList.forEach((m: any, idx: number) => {
-            meals.push({
-              id: `legacy-${date}-${idx}`,
-              name: m.n || 'Meal',
-              calories: m.k || 0,
-              protein: m.p || 0,
-              carbs: m.c || 0,
-              fat: m.f || 0,
-              time: m.t || '00:00'
-            });
-          });
-        }
-
-        const workoutSessions: WorkoutSession[] = [];
-        if (day.ps) { // If there was a workout part
-          workoutSessions.push({
-            id: `legacy-workout-${date}`,
-            startTime: '00:00',
-            exercises: [],
-            calories: day.s || 0, // Assuming 's' was strength/workout calories
-            category: day.ps
-          });
-        }
-
-        migratedDays[date] = {
-          date,
-          calories: day.c || 0, // In v2, 'c' might have been intake or cardio
-          steps: day.steps || 0,
-          water: day.water || 0,
-          weight: day.w || undefined, // Version 2 used 'w' for weight
-          bodyFat: day.bf || undefined, // Assuming 'bf' for body fat in v2 if it existed
-          meals,
-          workoutSessions
-        };
-        console.log(`Migrated day ${date}: weight = ${migratedDays[date].weight}`);
-      }
+      const meals = (day.meals || []).map((m: any) => {
+        const { calories, ...rest } = m;
+        return rest;
+      });
+      
+      const { calories, ...dayRest } = day;
+      migratedDays[date] = {
+        ...dayRest,
+        date,
+        meals,
+        workoutSessions: day.workoutSessions || []
+      };
     });
   }
   parsed.days = migratedDays;
 
-  // 4. Other Fields
-  if (!parsed.customExercises) parsed.customExercises = [];
-  if (!parsed.enabledWidgets) parsed.enabledWidgets = initialData.enabledWidgets;
-  if (!parsed.categoryImages) parsed.categoryImages = initialData.categoryImages;
-  if (!parsed.syncSettings) parsed.syncSettings = initialData.syncSettings;
-  if (!parsed.phase) parsed.phase = 1;
-  if (!parsed.mode) parsed.mode = 'train';
-  
-  parsed.version = 4; // Mark as migrated
+  // 4. Food Library Migration
+  if (parsed.foodLibrary) {
+    parsed.foodLibrary = parsed.foodLibrary.map((f: any) => {
+      if (f.nutrientsPer100g) return f;
+      return {
+        id: f.id || Math.random().toString(36).substr(2, 9),
+        name: f.name || 'Unknown',
+        state: 'raw',
+        nutrientsPer100g: {
+          protein: f.protein || 0,
+          carbs: f.carbs || 0,
+          fat: f.fat || 0
+        },
+        userOverride: false,
+        source: 'local'
+      };
+    });
+  }
+
+  parsed.version = 5;
   return parsed as AppData;
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isFirstSyncComplete, setIsFirstSyncComplete] = useState(false);
   const [language, setLanguage] = useState<Language>('zh');
   const [theme, setTheme] = useState<Theme>('dark');
   const [selectedDate, setSelectedDate] = useState<string>(getTodayStr());
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [sessionDayType, setSessionDayType] = useState<'training' | 'rest' | null>(null);
+
+  // Reset sessionDayType when date changes
+  useEffect(() => {
+    setSessionDayType(null);
+  }, [selectedDate]);
   const [appData, setAppData] = useState<AppData>(() => {
     const saved = localStorage.getItem('utopia_data');
     if (saved) {
@@ -178,6 +223,306 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     return initialData;
   });
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    // If there's an active session in the appData we just loaded, start on workouts tab
+    return appData?.activeWorkoutSession ? 'workouts' : 'dashboard';
+  });
+
+  const isInternalUpdate = React.useRef(false);
+
+  // Resolved Nutrition Layer
+  const resolvedNutritionToday = React.useMemo((): ResolvedNutritionToday => {
+    const settings = appData.nutritionSettings;
+    const today = getTodayStr();
+    const dayData = appData.days[selectedDate] || { meals: [], workoutSessions: [] };
+    
+    // 1. Determine Day Type
+    let currentDayType: 'training' | 'rest' = 'rest';
+    let dayTypeSource: 'manual' | 'auto' | 'session' = 'auto';
+    
+    if (sessionDayType) {
+      currentDayType = sessionDayType;
+      dayTypeSource = 'session';
+    } else {
+      const hasWorkout = dayData.workoutSessions && dayData.workoutSessions.filter(s => !s.deleted).length > 0;
+      currentDayType = hasWorkout ? 'training' : 'rest';
+      dayTypeSource = 'auto';
+    }
+
+    // 2. Determine Phase
+    let currentPhase = 0;
+    let phaseSource: 'manual' | 'auto' = 'auto';
+    
+    if (settings.manualPhase !== undefined) {
+      currentPhase = settings.manualPhase;
+      phaseSource = 'manual';
+    } else {
+      const start = new Date(settings.startDate).getTime();
+      const now = new Date(selectedDate).getTime();
+      const diffWeeks = Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000));
+      currentPhase = Math.max(0, Math.min(diffWeeks, settings.cutPhases.length - 1));
+    }
+
+    // 3. Get Base Goal
+    let baseGoal: MacroGrams = { protein: 0, carbs: 0, fat: 0 };
+    
+    if (settings.mode === 'standard') {
+      baseGoal = currentDayType === 'training' ? settings.standard.trainingDay : settings.standard.restDay;
+    } else if (settings.mode === 'carb-cycling') {
+      baseGoal = currentDayType === 'training' ? settings.carbCycling.trainingDay : settings.carbCycling.restDay;
+    } else if (settings.mode === 'cut-phases') {
+      const phaseConfig = settings.cutPhases[currentPhase] || settings.cutPhases[0] || { trainingDay: { protein: 0, carbs: 0, fat: 0 }, restDay: { protein: 0, carbs: 0, fat: 0 } };
+      baseGoal = currentDayType === 'training' ? phaseConfig.trainingDay : phaseConfig.restDay;
+    }
+
+    // Ensure baseGoal has values (fallback to standard if something went wrong)
+    if (baseGoal.protein === 0 && baseGoal.carbs === 0 && baseGoal.fat === 0) {
+      const fallback = settings.standard || initialData.nutritionSettings.standard;
+      baseGoal = currentDayType === 'training' ? fallback.trainingDay : fallback.restDay;
+    }
+
+    // 4. Dynamic Goal (Exercise Compensation)
+    const exerciseBurn = (dayData.workoutSessions || []).reduce((sum, s) => sum + (s.calories || 0), 0);
+    // Simple compensation: add extra carbs for exercise burn (4kcal/g)
+    const extraCarbs = Math.round(exerciseBurn / 4);
+    const dynamicGoal: MacroGrams = {
+      ...baseGoal,
+      carbs: baseGoal.carbs + extraCarbs
+    };
+
+    // 5. Consumed
+    const consumed: MacroGrams = (dayData.meals || []).filter(m => !m.deleted).reduce((acc, meal) => ({
+      protein: acc.protein + (meal.protein || 0),
+      carbs: acc.carbs + (meal.carbs || 0),
+      fat: acc.fat + (meal.fat || 0)
+    }), { protein: 0, carbs: 0, fat: 0 });
+
+    // 6. Remaining
+    const remaining: MacroGrams = {
+      protein: dynamicGoal.protein - consumed.protein,
+      carbs: dynamicGoal.carbs - consumed.carbs,
+      fat: dynamicGoal.fat - consumed.fat
+    };
+
+    // 7. Calories
+    const calories = {
+      baseGoal: calcCalories(baseGoal.protein, baseGoal.carbs, baseGoal.fat),
+      dynamicGoal: calcCalories(dynamicGoal.protein, dynamicGoal.carbs, dynamicGoal.fat),
+      consumed: calcCalories(consumed.protein, consumed.carbs, consumed.fat),
+      remaining: calcCalories(remaining.protein, remaining.carbs, remaining.fat)
+    };
+
+    // 8. Percentage
+    const getPct = (cur: number, goal: number) => goal > 0 ? Math.round((cur / goal) * 100) : 0;
+    const percentage = {
+      protein: getPct(consumed.protein, dynamicGoal.protein),
+      carbs: getPct(consumed.carbs, dynamicGoal.carbs),
+      fat: getPct(consumed.fat, dynamicGoal.fat),
+      calories: getPct(calories.consumed, calories.dynamicGoal)
+    };
+
+    return {
+      baseGoal,
+      dynamicGoal,
+      consumed,
+      remaining,
+      calories,
+      percentage,
+      metadata: {
+        currentDayType,
+        currentPhase,
+        dayTypeSource,
+        phaseSource
+      }
+    };
+  }, [appData.nutritionSettings, appData.days, selectedDate, sessionDayType]);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthReady(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Real-time Sync Listener
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Listen to Profile/Settings
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribeUser = onSnapshot(userDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const remoteData = snapshot.data();
+        isInternalUpdate.current = true;
+        setAppData(prev => {
+          // Preserve local sync mode
+          const localMode = prev.syncSettings.mode;
+          
+          // Deep merge remote data into local state
+          const merged = {
+            ...prev,
+            ...remoteData,
+            profile: {
+              ...prev.profile,
+              ...(remoteData.profile || {})
+            },
+            syncSettings: {
+              ...prev.syncSettings,
+              ...(remoteData.settings || {}),
+              mode: localMode // Always keep local mode
+            }
+          };
+          
+          const migrated = migrateData(merged);
+          return migrated;
+        });
+        setIsFirstSyncComplete(true);
+        setTimeout(() => { isInternalUpdate.current = false; }, 100);
+      } else {
+        // If document doesn't exist, this is the first sync
+        setIsFirstSyncComplete(true);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+    });
+
+    // 2. Listen to Days
+    const daysColRef = collection(db, 'users', user.uid, 'days');
+    const unsubscribeDays = onSnapshot(daysColRef, (snapshot) => {
+      const remoteDays: { [key: string]: DayData } = {};
+      snapshot.docs.forEach(doc => {
+        remoteDays[doc.id] = doc.data() as DayData;
+      });
+
+      if (Object.keys(remoteDays).length > 0) {
+        isInternalUpdate.current = true;
+        setAppData(prev => {
+          const newDays = { ...prev.days };
+          Object.entries(remoteDays).forEach(([date, remoteDay]) => {
+            if (!newDays[date]) {
+              newDays[date] = remoteDay;
+            } else {
+              // 1. Merge Meals using updatedAt
+              const localMeals = newDays[date].meals || [];
+              const remoteMeals = remoteDay.meals || [];
+              const mealMap = new Map<string, CustomMeal>();
+              
+              // Add local meals to map
+              localMeals.forEach(m => mealMap.set(m.id, m));
+              
+              // Merge remote meals: newer updatedAt wins
+              remoteMeals.forEach(rm => {
+                const lm = mealMap.get(rm.id);
+                if (!lm || (rm.updatedAt || 0) > (lm.updatedAt || 0)) {
+                  mealMap.set(rm.id, rm);
+                }
+              });
+              const now = Date.now();
+              const archiveThreshold = 90 * 24 * 60 * 60 * 1000; // 90 days
+              const cleanThreshold = 180 * 24 * 60 * 60 * 1000; // 180 days (90 days after archive)
+
+              // 2. Merge Workouts using updatedAt
+              const localWorkouts = newDays[date].workoutSessions || [];
+              const remoteWorkouts = remoteDay.workoutSessions || [];
+              const workoutMap = new Map<string, WorkoutSession>();
+              
+              localWorkouts.forEach(w => workoutMap.set(w.id, w));
+              remoteWorkouts.forEach(rw => {
+                const lw = workoutMap.get(rw.id);
+                if (!lw || (rw.updatedAt || 0) > (lw.updatedAt || 0)) {
+                  workoutMap.set(rw.id, rw);
+                }
+              });
+
+              // Helper for archiving and cleaning
+              const processItems = <T extends { id: string; updatedAt?: number; deleted?: boolean; archived?: boolean }>(items: T[]): T[] => {
+                return items
+                  .map(item => {
+                    // Archive if older than 90 days
+                    if (!item.archived && (now - (item.updatedAt || 0) > archiveThreshold)) {
+                      return { ...item, archived: true, updatedAt: now };
+                    }
+                    return item;
+                  })
+                  .filter(item => {
+                    // Clean if archived AND deleted AND very old (180 days total from last update)
+                    if (item.archived && item.deleted && (now - (item.updatedAt || 0) > cleanThreshold)) {
+                      return false;
+                    }
+                    return true;
+                  });
+              };
+
+              const mergedMeals = processItems(Array.from(mealMap.values()) as CustomMeal[]);
+              const mergedWorkouts = processItems(Array.from(workoutMap.values()) as WorkoutSession[]);
+
+              newDays[date] = {
+                ...newDays[date],
+                ...remoteDay,
+                meals: mergedMeals,
+                workoutSessions: mergedWorkouts,
+                water: Math.max(newDays[date].water || 0, remoteDay.water || 0),
+                steps: Math.max(newDays[date].steps || 0, remoteDay.steps || 0),
+                weight: remoteDay.weight || newDays[date].weight,
+                bodyFat: remoteDay.bodyFat || newDays[date].bodyFat
+              };
+            }
+          });
+          return { ...prev, days: newDays };
+        });
+        setTimeout(() => { isInternalUpdate.current = false; }, 100);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/days`);
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeDays();
+    };
+  }, [user]);
+
+  // Auto-Save to Firestore
+  useEffect(() => {
+    // CRITICAL: Don't auto-save until we've pulled the latest data from cloud
+    // This prevents a fresh device from overwriting cloud data with defaults
+    if (!user || isInternalUpdate.current || !isFirstSyncComplete) return;
+
+    const saveToFirestore = async () => {
+      try {
+        const { mode } = appData.syncSettings;
+
+        // 1. Save Profile/Settings
+        const userDocRef = doc(db, 'users', user.uid);
+        const { days, ...profileData } = appData;
+        
+        // Always save profile and settings to cloud so they sync across devices
+        // The 'mode' only controls whether this device is the "Master" for global settings
+        // But we still want to push changes made on this device.
+        await setDoc(userDocRef, {
+          ...profileData,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        // 2. Save Days
+        if (appData.days[selectedDate]) {
+          const dayDocRef = doc(db, 'users', user.uid, 'days', selectedDate);
+          await setDoc(dayDocRef, {
+            ...appData.days[selectedDate],
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      }
+    };
+
+    const timeoutId = setTimeout(saveToFirestore, 2000); // Increased debounce to be safer
+    return () => clearTimeout(timeoutId);
+  }, [appData, user, selectedDate, isFirstSyncComplete]);
 
   useEffect(() => {
     localStorage.setItem('utopia_data', JSON.stringify(appData));
@@ -252,14 +597,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const syncWithGist = async (silent: boolean = false) => {
     const { githubToken, gistId, mode } = appData.syncSettings;
     if (!githubToken) {
-      if (!silent) alert(t('enterToken'));
+      if (!silent) showToast(t('enterToken'), 'error');
       return;
     }
-
-    console.log(`Starting Gist Sync. Mode: ${mode}, Silent: ${silent}`);
 
     try {
       let currentGistId = gistId;
@@ -275,7 +625,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...appData,
             syncSettings: { ...appData.syncSettings, gistId: newGistId }
           });
-          alert(t('gistCreateSuccess'));
+          showToast(t('gistCreateSuccess'));
         } else {
           throw new Error('Gist creation failed. Check your token permissions (gist scope required).');
         }
@@ -361,14 +711,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const success = await githubService.updateGist(githubToken, currentGistId, updatedData);
         if (success) {
           setAppData(updatedData);
-          if (!silent) alert(t('gistSyncSuccess'));
+          if (!silent) showToast(t('gistSyncSuccess'));
         } else {
           throw new Error('Failed to update Gist. Check your internet connection or token permissions.');
         }
       }
     } catch (error: any) {
       console.error('Gist Sync Error:', error);
-      if (!silent) alert(error.message || t('gistSyncError'));
+      if (!silent) showToast(error.message || t('gistSyncError'), 'error');
       throw error; // Re-throw so caller can handle UI state
     }
   };
@@ -393,12 +743,89 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [appData.syncSettings.githubToken, appData.syncSettings.gistId, appData.syncSettings.mode]);
 
+  const pushAllToCloud = async () => {
+    if (!user) {
+      showToast(t('pleaseLogin' as any) || 'Please login to sync to cloud', 'error');
+      return;
+    }
+    await saveAppDataToCloud(appData);
+  };
+
+  const saveAppDataToCloud = async (data: AppData) => {
+    if (!user) return;
+    
+    // Helper to recursively replace undefined with null for Firestore compatibility
+    const cleanForFirestore = (obj: any): any => {
+      if (obj === undefined) return null;
+      if (obj === null || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(cleanForFirestore);
+      return Object.fromEntries(
+        Object.entries(obj).map(([k, v]) => [k, cleanForFirestore(v)])
+      );
+    };
+
+    try {
+      const cleanData = cleanForFirestore(data);
+      const { days, ...profileData } = cleanData;
+      
+      // Push profile & settings
+      await setDoc(doc(db, "users", user.uid), {
+        ...profileData,
+        foodLibrary: cleanData.foodLibrary || [],
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // Push all days
+      const promises = Object.entries(cleanData.days || {}).map(([date, dayData]) => {
+        return setDoc(doc(db, "users", user.uid, "days", date), {
+          ...(dayData as any),
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      });
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Save app data error:", error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/save`);
+    }
+  };
+
+  const signIn = async () => {
+    try {
+      await signInWithGoogle();
+      showToast(t('syncSuccess'));
+    } catch (error) {
+      showToast(t('syncError'), 'error');
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await firebaseLogout();
+      showToast(t('logoutSuccess' as any) || 'Logged out');
+    } catch (error) {
+      showToast(t('syncError'), 'error');
+    }
+  };
+
   return (
     <AppContext.Provider value={{ 
-      language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist,
-      selectedDate, setSelectedDate, activeTab, setActiveTab
+      language, setLanguage, theme, setTheme, t, appData, setAppData, calculateBMR, mergeData, syncWithGist, showToast,
+      signIn, logout, pushAllToCloud, saveAppDataToCloud, user, isAuthReady,
+      selectedDate, setSelectedDate, activeTab, setActiveTab,
+      resolvedNutritionToday, sessionDayType, setSessionDayType
     }}>
       {children}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 z-[200] -translate-x-1/2 px-4 w-full max-w-xs pointer-events-none">
+          <div className={`rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-2xl backdrop-blur-md flex items-center gap-3 ${
+            toast.type === 'error' ? 'bg-red-500/80' : 'bg-green-500/80'
+          }`}>
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            <span className="flex-1">{toast.message}</span>
+          </div>
+        </div>
+      )}
     </AppContext.Provider>
   );
 }

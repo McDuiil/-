@@ -18,6 +18,14 @@ export default function App() {
   const [tempWeight, setTempWeight] = useState<string>("");
   const [tempBodyFat, setTempBodyFat] = useState<string>("");
 
+  // Session Recovery Logic: If there's an active workout, force switch to Workouts tab on app start
+  useEffect(() => {
+    if (appData.activeWorkoutSession && activeTab === 'dashboard') {
+      console.log("Active workout detected, recovering session...");
+      setActiveTab('workouts');
+    }
+  }, []); // Only run once on mount
+
   useEffect(() => {
     const today = getTodayStr();
     const hasWeightToday = appData.days[today]?.weight;
@@ -87,26 +95,31 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full max-w-md mx-auto relative overflow-x-hidden no-scrollbar">
-      {/* Background Decorative Elements */}
+      {/* Background Decorative Elements (Orbs) */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/10 blur-[100px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-green-500/10 blur-[100px]" />
+        <div className="absolute top-[-15%] left-[-10%] w-[70%] h-[70%] rounded-full bg-blue-600/20 blur-[140px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-15%] w-[60%] h-[60%] rounded-full bg-purple-600/20 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-[30%] right-[-20%] w-[50%] h-[50%] rounded-full bg-indigo-600/15 blur-[100px] animate-pulse" style={{ animationDelay: '4s' }} />
+        <div className="absolute bottom-[20%] left-[-10%] w-[40%] h-[40%] rounded-full bg-cyan-600/10 blur-[80px] animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
-      <main className="relative z-10">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-          >
-            {renderContent()}
-          </motion.div>
-        </AnimatePresence>
+      <main className="relative z-0">
+        {/* Removed AnimatePresence to prevent DOM ghosting during rapid clicks */}
+        <motion.div
+          key={activeTab}
+          className="w-full"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ 
+            duration: 0.15,
+            ease: [0.23, 1, 0.32, 1] // Fast out-expo
+          }}
+        >
+          {renderContent()}
+        </motion.div>
       </main>
 
+      <div className="h-32" /> {/* Bottom Spacer for Navigation */}
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Weight Prompt Modal */}
